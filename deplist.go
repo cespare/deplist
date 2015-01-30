@@ -16,7 +16,7 @@ package name is given, the current directory is used.
 	os.Exit(status)
 }
 
-func findDeps(soFar map[string]bool, name string) error {
+func findDeps(soFar map[string]bool, name string, silent bool) error {
 	cwd, err := os.Getwd()
 	if err != nil {
 		return err
@@ -24,7 +24,9 @@ func findDeps(soFar map[string]bool, name string) error {
 
 	pkg, err := build.Import(name, cwd, 0)
 	if err != nil {
-		return err
+		if !silent || (silent && pkg.ImportPath == "") {
+			return err
+		}
 	}
 
 	if pkg.Goroot {
@@ -34,7 +36,7 @@ func findDeps(soFar map[string]bool, name string) error {
 	soFar[pkg.ImportPath] = true
 	for _, imp := range pkg.Imports {
 		if !soFar[imp] {
-			if err := findDeps(soFar, imp); err != nil {
+			if err := findDeps(soFar, imp, silent); err != nil {
 				return err
 			}
 		}
@@ -44,6 +46,7 @@ func findDeps(soFar map[string]bool, name string) error {
 
 func main() {
 	pkg := ""
+	silent := false
 	switch len(os.Args) {
 	case 1:
 		pkg = "."
@@ -53,13 +56,23 @@ func main() {
 				usage(0)
 			}
 		}
+		if os.Args[1] == "-s" {
+			silent = true
+		}
 		pkg = os.Args[1]
+	case 3:
+		if os.Args[1] == "-s" {
+			silent = true
+			pkg = os.Args[2]
+		} else {
+			usage(1)
+		}
 	default:
 		usage(1)
 	}
 
 	deps := make(map[string]bool)
-	err := findDeps(deps, pkg)
+	err := findDeps(deps, pkg, silent)
 	if err != nil {
 		log.Fatalln(err)
 	}
