@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"go/build"
 	"log"
@@ -16,7 +17,7 @@ package name is given, the current directory is used.
 	os.Exit(status)
 }
 
-func findDeps(soFar map[string]bool, name string) error {
+func findDeps(soFar map[string]bool, name string, testImports bool) error {
 	cwd, err := os.Getwd()
 	if err != nil {
 		return err
@@ -32,9 +33,13 @@ func findDeps(soFar map[string]bool, name string) error {
 	}
 
 	soFar[pkg.ImportPath] = true
-	for _, imp := range pkg.Imports {
+	imports := pkg.Imports
+	if testImports {
+		imports = append(imports, pkg.TestImports...)
+	}
+	for _, imp := range imports {
 		if !soFar[imp] {
-			if err := findDeps(soFar, imp); err != nil {
+			if err := findDeps(soFar, imp, testImports); err != nil {
 				return err
 			}
 		}
@@ -43,23 +48,19 @@ func findDeps(soFar map[string]bool, name string) error {
 }
 
 func main() {
-	pkg := ""
-	switch len(os.Args) {
+	testImports := flag.Bool("t", false, "Include test dependencies")
+	flag.Parse()
+
+	pkg := "."
+	switch flag.NArg() {
 	case 1:
-		pkg = "."
-	case 2:
-		for _, s := range []string{"-h", "help", "-help", "--help"} {
-			if os.Args[1] == s {
-				usage(0)
-			}
-		}
-		pkg = os.Args[1]
+		pkg = flag.Arg(0)
 	default:
 		usage(1)
 	}
 
 	deps := make(map[string]bool)
-	err := findDeps(deps, pkg)
+	err := findDeps(deps, pkg, *testImports)
 	if err != nil {
 		log.Fatalln(err)
 	}
