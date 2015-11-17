@@ -9,25 +9,28 @@ import (
 	"sort"
 )
 
-func usage(status int) {
+func usage() {
 	fmt.Printf(`Usage:
-	%s [PKG]
-where PKG is the name of a Go package (e.g., github.com/cespare/deplist). If no
+    %s [flags] [pkg]
+where pkg is the name of a Go package (e.g., github.com/cespare/deplist). If no
 package name is given, the current directory is used.
+
+Flags:
 `, os.Args[0])
-	os.Exit(status)
+	flag.PrintDefaults()
 }
 
-type ctx struct {
+type context struct {
 	soFar map[string]bool
-	cwd   string
+	ctx   build.Context
+	dir   string
 }
 
-func (c *ctx) find(name string, testImports bool) error {
+func (c *context) find(name string, testImports bool) error {
 	if name == "C" {
 		return nil
 	}
-	pkg, err := build.Import(name, c.cwd, 0)
+	pkg, err := c.ctx.Import(name, c.dir, 0)
 	if err != nil {
 		return err
 	}
@@ -35,7 +38,9 @@ func (c *ctx) find(name string, testImports bool) error {
 		return nil
 	}
 
-	c.soFar[pkg.ImportPath] = true
+	if name != "." {
+		c.soFar[pkg.ImportPath] = true
+	}
 	imports := pkg.Imports
 	if testImports {
 		imports = append(imports, pkg.TestImports...)
@@ -50,14 +55,15 @@ func (c *ctx) find(name string, testImports bool) error {
 	return nil
 }
 
-func FindDeps(name string, testImports bool) ([]string, error) {
-	cwd, err := os.Getwd()
-	if err != nil {
-		return nil, err
+func FindDeps(name, dir, gopath string, testImports bool) ([]string, error) {
+	ctx := build.Default
+	if gopath != "" {
+		ctx.GOPATH = gopath
 	}
-	c := &ctx{
+	c := &context{
 		soFar: make(map[string]bool),
-		cwd:   cwd,
+		ctx:   ctx,
+		dir:   dir,
 	}
 	if err := c.find(name, testImports); err != nil {
 		return nil, err
@@ -74,17 +80,24 @@ func FindDeps(name string, testImports bool) ([]string, error) {
 
 func main() {
 	testImports := flag.Bool("t", false, "Include test dependencies")
+	flag.Usage = usage
 	flag.Parse()
 
 	pkg := "."
 	switch flag.NArg() {
 	case 1:
 		pkg = flag.Arg(0)
+	case 0:
 	default:
-		usage(1)
+		usage()
+		os.Exit(1)
 	}
 
-	deps, err := FindDeps(pkg, *testImports)
+	cwd, err := os.Getwd()
+	if err != nil {
+		log.Fatalln("Couldn't determine working directory:", err)
+	}
+	deps, err := FindDeps(pkg, cwd, "", *testImports)
 	if err != nil {
 		log.Fatal(err)
 	}
