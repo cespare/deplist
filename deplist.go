@@ -6,6 +6,7 @@ import (
 	"go/build"
 	"log"
 	"os"
+	"sort"
 )
 
 func usage(status int) {
@@ -17,16 +18,16 @@ package name is given, the current directory is used.
 	os.Exit(status)
 }
 
-func findDeps(soFar map[string]bool, name string, testImports bool) error {
-	cwd, err := os.Getwd()
-	if err != nil {
-		return err
-	}
+type ctx struct {
+	soFar map[string]bool
+	cwd   string
+}
 
+func (c *ctx) find(name string, testImports bool) error {
 	if name == "C" {
 		return nil
 	}
-	pkg, err := build.Import(name, cwd, 0)
+	pkg, err := build.Import(name, c.cwd, 0)
 	if err != nil {
 		return err
 	}
@@ -34,19 +35,41 @@ func findDeps(soFar map[string]bool, name string, testImports bool) error {
 		return nil
 	}
 
-	soFar[pkg.ImportPath] = true
+	c.soFar[pkg.ImportPath] = true
 	imports := pkg.Imports
 	if testImports {
 		imports = append(imports, pkg.TestImports...)
 	}
 	for _, imp := range imports {
-		if !soFar[imp] {
-			if err := findDeps(soFar, imp, testImports); err != nil {
+		if !c.soFar[imp] {
+			if err := c.find(imp, testImports); err != nil {
 				return err
 			}
 		}
 	}
 	return nil
+}
+
+func FindDeps(name string, testImports bool) ([]string, error) {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return nil, err
+	}
+	c := &ctx{
+		soFar: make(map[string]bool),
+		cwd:   cwd,
+	}
+	if err := c.find(name, testImports); err != nil {
+		return nil, err
+	}
+	var deps []string
+	for p := range c.soFar {
+		if p != name {
+			deps = append(deps, p)
+		}
+	}
+	sort.Strings(deps)
+	return deps, nil
 }
 
 func main() {
@@ -61,13 +84,11 @@ func main() {
 		usage(1)
 	}
 
-	deps := make(map[string]bool)
-	err := findDeps(deps, pkg, *testImports)
+	deps, err := FindDeps(pkg, *testImports)
 	if err != nil {
-		log.Fatalln(err)
+		log.Fatal(err)
 	}
-	delete(deps, pkg)
-	for dep := range deps {
+	for _, dep := range deps {
 		fmt.Println(dep)
 	}
 }
