@@ -23,11 +23,13 @@ func findDeps(soFar map[string]bool, name string, testImports bool) error {
 		return err
 	}
 
+	if name == "C" {
+		return nil
+	}
 	pkg, err := build.Import(name, cwd, 0)
 	if err != nil {
 		return err
 	}
-
 	if pkg.Goroot {
 		return nil
 	}
