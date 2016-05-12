@@ -20,13 +20,20 @@ Flags:
 	flag.PrintDefaults()
 }
 
+type opts uint
+
+const (
+	optTestImports opts = 1 << iota
+	optStd
+)
+
 type context struct {
 	soFar map[string]bool
 	ctx   build.Context
 	dir   string
 }
 
-func (c *context) find(name string, testImports bool) error {
+func (c *context) find(name string, o opts) error {
 	if name == "C" {
 		return nil
 	}
@@ -34,7 +41,7 @@ func (c *context) find(name string, testImports bool) error {
 	if err != nil {
 		return err
 	}
-	if pkg.Goroot {
+	if pkg.Goroot && o&optStd == 0 {
 		return nil
 	}
 
@@ -42,12 +49,12 @@ func (c *context) find(name string, testImports bool) error {
 		c.soFar[pkg.ImportPath] = true
 	}
 	imports := pkg.Imports
-	if testImports {
+	if o&optTestImports != 0 {
 		imports = append(imports, pkg.TestImports...)
 	}
 	for _, imp := range imports {
 		if !c.soFar[imp] {
-			if err := c.find(imp, testImports); err != nil {
+			if err := c.find(imp, o); err != nil {
 				return err
 			}
 		}
@@ -55,7 +62,7 @@ func (c *context) find(name string, testImports bool) error {
 	return nil
 }
 
-func FindDeps(name, dir, gopath string, testImports bool) ([]string, error) {
+func FindDeps(name, dir, gopath string, o opts) ([]string, error) {
 	ctx := build.Default
 	if gopath != "" {
 		ctx.GOPATH = gopath
@@ -65,7 +72,7 @@ func FindDeps(name, dir, gopath string, testImports bool) ([]string, error) {
 		ctx:   ctx,
 		dir:   dir,
 	}
-	if err := c.find(name, testImports); err != nil {
+	if err := c.find(name, o); err != nil {
 		return nil, err
 	}
 	var deps []string
@@ -80,6 +87,7 @@ func FindDeps(name, dir, gopath string, testImports bool) ([]string, error) {
 
 func main() {
 	testImports := flag.Bool("t", false, "Include test dependencies")
+	std := flag.Bool("std", false, "Include standard library dependencies")
 	flag.Usage = usage
 	flag.Parse()
 
@@ -93,11 +101,19 @@ func main() {
 		os.Exit(1)
 	}
 
+	var o opts
+	if *testImports {
+		o |= optTestImports
+	}
+	if *std {
+		o |= optStd
+	}
+
 	cwd, err := os.Getwd()
 	if err != nil {
 		log.Fatalln("Couldn't determine working directory:", err)
 	}
-	deps, err := FindDeps(pkg, cwd, "", *testImports)
+	deps, err := FindDeps(pkg, cwd, "", o)
 	if err != nil {
 		log.Fatal(err)
 	}

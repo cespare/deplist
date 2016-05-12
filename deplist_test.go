@@ -7,22 +7,19 @@ import (
 	"testing"
 )
 
-const (
-	tests   = true
-	notests = false
-)
-
 var testCases = []struct {
 	name   string
 	dir    string
-	tests  bool
+	o      opts
 	output []string
 }{
-	{"c", "/", notests, nil},
-	{"b", "/", notests, []string{"c"}},
-	{"a", "/", notests, []string{"b", "c"}},
-	{".", "testdata/src/a", notests, []string{"b", "c"}},
-	{"a", "/", tests, []string{"b", "c", "d"}},
+	{"c", "/", 0, nil},
+	{"b", "/", 0, []string{"c"}},
+	{"a", "/", 0, []string{"b", "c"}},
+	{".", "testdata/src/a", 0, []string{"b", "c"}},
+	{"a", "/", optTestImports, []string{"b", "c", "d"}},
+	{"a", "/", optStd, []string{"b", "c", "unsafe"}},
+	{"a", "/", optTestImports | optStd, []string{"b", "c", "d", "unsafe"}},
 }
 
 func TestFindDeps(t *testing.T) {
@@ -31,7 +28,7 @@ func TestFindDeps(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, tt := range testCases {
-		deps, err := FindDeps(tt.name, tt.dir, filepath.Join(cwd, "testdata"), tt.tests)
+		deps, err := FindDeps(tt.name, tt.dir, filepath.Join(cwd, "testdata"), tt.o)
 		if err != nil {
 			t.Fatal(err)
 		}
