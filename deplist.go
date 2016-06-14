@@ -30,14 +30,13 @@ const (
 type context struct {
 	soFar map[string]bool
 	ctx   build.Context
-	dir   string
 }
 
-func (c *context) find(name string, o opts) error {
+func (c *context) find(name, dir string, o opts) error {
 	if name == "C" {
 		return nil
 	}
-	pkg, err := c.ctx.Import(name, c.dir, 0)
+	pkg, err := c.ctx.Import(name, dir, 0)
 	if err != nil {
 		return err
 	}
@@ -54,7 +53,7 @@ func (c *context) find(name string, o opts) error {
 	}
 	for _, imp := range imports {
 		if !c.soFar[imp] {
-			if err := c.find(imp, o); err != nil {
+			if err := c.find(imp, pkg.Dir, o); err != nil {
 				return err
 			}
 		}
@@ -70,9 +69,8 @@ func FindDeps(name, dir, gopath string, o opts) ([]string, error) {
 	c := &context{
 		soFar: make(map[string]bool),
 		ctx:   ctx,
-		dir:   dir,
 	}
-	if err := c.find(name, o); err != nil {
+	if err := c.find(name, dir, o); err != nil {
 		return nil, err
 	}
 	var deps []string

@@ -20,6 +20,7 @@ var testCases = []struct {
 	{"a", "/", optTestImports, []string{"b", "c", "d"}},
 	{"a", "/", optStd, []string{"b", "c", "unsafe"}},
 	{"a", "/", optTestImports | optStd, []string{"b", "c", "d", "unsafe"}},
+	{"e", "/", 0, []string{"e/vendor/v0", "e/vendor/v0/vendor/a"}},
 }
 
 func TestFindDeps(t *testing.T) {
