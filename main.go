@@ -3,9 +3,9 @@ package main
 import (
 	"flag"
 	"fmt"
+	"github.com/elgohr/deplist/api"
 	"log"
 	"os"
-	"github.com/elgohr/deplist/deplist"
 )
 
 func usage() {
@@ -35,19 +35,19 @@ func main() {
 		os.Exit(1)
 	}
 
-	var o deplist.Opts
+	var o api.Opts
 	if *testImports {
-		o |= deplist.OptTestImports
+		o |= api.OptTestImports
 	}
 	if *std {
-		o |= deplist.OptStd
+		o |= api.OptStd
 	}
 
 	cwd, err := os.Getwd()
 	if err != nil {
 		log.Fatalln("Couldn't determine working directory:", err)
 	}
-	deps, err := deplist.FindDeps(pkg, cwd, "", o)
+	deps, err := api.FindDeps(pkg, cwd, "", o)
 	if err != nil {
 		log.Fatal(err)
 	}

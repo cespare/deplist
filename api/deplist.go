@@ -1,8 +1,8 @@
-package deplist
+package api
 
 import (
-	"sort"
 	"go/build"
+	"sort"
 )
 
 type Opts uint
