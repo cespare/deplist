@@ -1,6 +1,7 @@
-package main
+package api_test
 
 import (
+	"github.com/elgohr/deplist/api"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -10,16 +11,16 @@ import (
 var testCases = []struct {
 	name   string
 	dir    string
-	o      opts
+	o      api.Opts
 	output []string
 }{
 	{"c", "/", 0, nil},
 	{"b", "/", 0, []string{"c"}},
 	{"a", "/", 0, []string{"b", "c"}},
 	{".", "testdata/src/a", 0, []string{"b", "c"}},
-	{"a", "/", optTestImports, []string{"b", "c", "d"}},
-	{"a", "/", optStd, []string{"b", "c", "unsafe"}},
-	{"a", "/", optTestImports | optStd, []string{"b", "c", "d", "unsafe"}},
+	{"a", "/", api.OptTestImports, []string{"b", "c", "d"}},
+	{"a", "/", api.OptStd, []string{"b", "c", "unsafe"}},
+	{"a", "/", api.OptTestImports | api.OptStd, []string{"b", "c", "d", "unsafe"}},
 	{"e", "/", 0, []string{"e/vendor/v0", "e/vendor/v0/vendor/a"}},
 }
 
@@ -29,7 +30,7 @@ func TestFindDeps(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, tt := range testCases {
-		deps, err := FindDeps(tt.name, tt.dir, filepath.Join(cwd, "testdata"), tt.o)
+		deps, err := api.FindDeps(tt.name, tt.dir, filepath.Join(cwd, "testdata"), tt.o)
 		if err != nil {
 			t.Fatal(err)
 		}
