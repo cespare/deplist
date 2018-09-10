@@ -30,7 +30,7 @@ const (
 )
 
 type context struct {
-	soFar map[string]bool
+	soFar map[string]struct{}
 	ctx   build.Context
 }
 
@@ -47,14 +47,14 @@ func (c *context) find(name, dir string, o opts) error {
 	}
 
 	if name != "." {
-		c.soFar[pkg.ImportPath] = true
+		c.soFar[pkg.ImportPath] = struct{}{}
 	}
 	imports := pkg.Imports
 	if o&optTestImports != 0 {
 		imports = append(imports, pkg.TestImports...)
 	}
 	for _, imp := range imports {
-		if !c.soFar[imp] {
+		if _, ok := c.soFar[imp]; !ok {
 			if err := c.find(imp, pkg.Dir, o); err != nil {
 				return err
 			}
@@ -63,13 +63,13 @@ func (c *context) find(name, dir string, o opts) error {
 	return nil
 }
 
-func FindDeps(name, dir, gopath string, o opts) ([]string, error) {
+func findDeps(name, dir, gopath string, o opts) ([]string, error) {
 	ctx := build.Default
 	if gopath != "" {
 		ctx.GOPATH = gopath
 	}
 	c := &context{
-		soFar: make(map[string]bool),
+		soFar: make(map[string]struct{}),
 		ctx:   ctx,
 	}
 	if err := c.find(name, dir, o); err != nil {
@@ -113,7 +113,7 @@ func main() {
 	if err != nil {
 		log.Fatalln("Couldn't determine working directory:", err)
 	}
-	deps, err := FindDeps(pkg, cwd, "", o)
+	deps, err := findDeps(pkg, cwd, "", o)
 	if err != nil {
 		log.Fatal(err)
 	}

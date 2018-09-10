@@ -29,7 +29,7 @@ func TestFindDeps(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, tt := range testCases {
-		deps, err := FindDeps(tt.name, tt.dir, filepath.Join(cwd, "testdata"), tt.o)
+		deps, err := findDeps(tt.name, tt.dir, filepath.Join(cwd, "testdata"), tt.o)
 		if err != nil {
 			t.Fatal(err)
 		}
