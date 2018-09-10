@@ -11,9 +11,11 @@ import (
 
 func usage() {
 	fmt.Printf(`Usage:
+
     %s [flags] [pkg]
-where pkg is the name of a Go package (e.g., github.com/cespare/deplist). If no
-package name is given, the current directory is used.
+
+where pkg is the name of a Go package (e.g., github.com/cespare/deplist).
+If no package name is given, the current directory is used.
 
 Flags:
 `, os.Args[0])
