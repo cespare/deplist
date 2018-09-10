@@ -3,10 +3,11 @@ package main
 import (
 	"flag"
 	"fmt"
-	"go/build"
 	"log"
 	"os"
 	"sort"
+
+	"golang.org/x/tools/go/packages"
 )
 
 func usage() {
@@ -29,61 +30,67 @@ const (
 	optStd
 )
 
-type context struct {
-	soFar map[string]struct{}
-	ctx   build.Context
-}
-
-func (c *context) find(name, dir string, o opts) error {
-	if name == "C" {
-		return nil
+func findDeps(name, dir string, o opts) ([]string, error) {
+	config := &packages.Config{
+		Mode:  packages.LoadImports,
+		Dir:   dir,
+		Env:   packagesEnv,
+		Tests: o&optTestImports != 0,
 	}
-	pkg, err := c.ctx.Import(name, dir, 0)
+	var ignore map[string]struct{}
+	if o&optStd != 0 {
+		var err error
+		ignore, err = findStd()
+		if err != nil {
+			return nil, fmt.Errorf("error loading std packages: %s", err)
+		}
+	}
+	pkgs, err := packages.Load(config, name)
 	if err != nil {
-		return err
+		return nil, fmt.Errorf("error loading specified package(s): %s", err)
 	}
-	if pkg.Goroot && o&optStd == 0 {
-		return nil
+	topLevel := make(map[string]struct{})
+	for _, pkg := range pkgs {
+		topLevel[pkg.PkgPath] = struct{}{}
 	}
-
-	if name != "." {
-		c.soFar[pkg.ImportPath] = struct{}{}
-	}
-	imports := pkg.Imports
-	if o&optTestImports != 0 {
-		imports = append(imports, pkg.TestImports...)
-	}
-	for _, imp := range imports {
-		if _, ok := c.soFar[imp]; !ok {
-			if err := c.find(imp, pkg.Dir, o); err != nil {
-				return err
-			}
+	depSet := make(map[string]struct{})
+	fn := func(p *packages.Package) bool {
+		pp := p.PkgPath
+		if contains(topLevel, pp) && !contains(ignore, pp) {
+			depSet[pp] = struct{}{}
 		}
+		return true
 	}
-	return nil
-}
-
-func findDeps(name, dir, gopath string, o opts) ([]string, error) {
-	ctx := build.Default
-	if gopath != "" {
-		ctx.GOPATH = gopath
-	}
-	c := &context{
-		soFar: make(map[string]struct{}),
-		ctx:   ctx,
-	}
-	if err := c.find(name, dir, o); err != nil {
-		return nil, err
-	}
+	packages.Visit(pkgs, fn, nil)
 	var deps []string
-	for p := range c.soFar {
-		if p != name {
-			deps = append(deps, p)
-		}
+	for p := range depSet {
+		deps = append(deps, p)
 	}
 	sort.Strings(deps)
 	return deps, nil
 }
+
+func findStd() (map[string]struct{}, error) {
+	config := &packages.Config{
+		Env: packagesEnv,
+	}
+	pkgs, err := packages.Load(config, "std")
+	if err != nil {
+		return nil, err
+	}
+	set := make(map[string]struct{})
+	for _, pkg := range pkgs {
+		set[pkg.PkgPath] = struct{}{}
+	}
+	return set, nil
+}
+
+func contains(set map[string]struct{}, s string) bool {
+	_, ok := set[s]
+	return ok
+}
+
+var packagesEnv = append(os.Environ(), "GOFLAGS=-mod=readonly")
 
 func main() {
 	testImports := flag.Bool("t", false, "Include test dependencies")
@@ -105,6 +112,7 @@ func main() {
 	if *testImports {
 		o |= optTestImports
 	}
+	// FIXME: How to exclude packages from the stdlib?
 	if *std {
 		o |= optStd
 	}
@@ -113,7 +121,7 @@ func main() {
 	if err != nil {
 		log.Fatalln("Couldn't determine working directory:", err)
 	}
-	deps, err := findDeps(pkg, cwd, "", o)
+	deps, err := findDeps(pkg, cwd, o)
 	if err != nil {
 		log.Fatal(err)
 	}
