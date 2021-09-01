@@ -3,10 +3,11 @@ package main
 import (
 	"flag"
 	"fmt"
-	"go/build"
 	"log"
 	"os"
 	"sort"
+
+	"golang.org/x/tools/go/packages"
 )
 
 func usage() {
@@ -22,71 +23,9 @@ Flags:
 	flag.PrintDefaults()
 }
 
-type opts uint
-
-const (
-	optTestImports opts = 1 << iota
-	optStd
-)
-
-type context struct {
-	soFar map[string]struct{}
-	ctx   build.Context
-}
-
-func (c *context) find(name, dir string, o opts) error {
-	if name == "C" {
-		return nil
-	}
-	pkg, err := c.ctx.Import(name, dir, 0)
-	if err != nil {
-		return err
-	}
-	if pkg.Goroot && o&optStd == 0 {
-		return nil
-	}
-
-	if name != "." {
-		c.soFar[pkg.ImportPath] = struct{}{}
-	}
-	imports := pkg.Imports
-	if o&optTestImports != 0 {
-		imports = append(imports, pkg.TestImports...)
-	}
-	for _, imp := range imports {
-		if _, ok := c.soFar[imp]; !ok {
-			if err := c.find(imp, pkg.Dir, o); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
-}
-
-func findDeps(name, dir, gopath string, o opts) ([]string, error) {
-	ctx := build.Default
-	if gopath != "" {
-		ctx.GOPATH = gopath
-	}
-	c := &context{
-		soFar: make(map[string]struct{}),
-		ctx:   ctx,
-	}
-	if err := c.find(name, dir, o); err != nil {
-		return nil, err
-	}
-	var deps []string
-	for p := range c.soFar {
-		if p != name {
-			deps = append(deps, p)
-		}
-	}
-	sort.Strings(deps)
-	return deps, nil
-}
-
 func main() {
-	testImports := flag.Bool("t", false, "Include test dependencies")
+	log.SetFlags(0)
+	testDeps := flag.Bool("t", false, "Include test dependencies")
 	std := flag.Bool("std", false, "Include standard library dependencies")
 	flag.Usage = usage
 	flag.Parse()
@@ -101,22 +40,52 @@ func main() {
 		os.Exit(1)
 	}
 
-	var o opts
-	if *testImports {
-		o |= optTestImports
+	cfg := &packages.Config{
+		Mode:  packages.NeedName | packages.NeedImports | packages.NeedDeps,
+		Tests: *testDeps,
 	}
-	if *std {
-		o |= optStd
+	pkgs, err := packages.Load(cfg, pkg)
+	if err != nil {
+		log.Fatalln("Error loading packages:", err)
+	}
+	if packages.PrintErrors(pkgs) > 0 {
+		os.Exit(1)
 	}
 
-	cwd, err := os.Getwd()
-	if err != nil {
-		log.Fatalln("Couldn't determine working directory:", err)
+	depSet := make(map[string]struct{})
+	pre := func(pkg *packages.Package) bool {
+		depSet[pkg.PkgPath] = struct{}{}
+		return true
 	}
-	deps, err := findDeps(pkg, cwd, "", o)
-	if err != nil {
-		log.Fatal(err)
+	packages.Visit(pkgs, pre, nil)
+	if !*std {
+		cfg.Tests = false
+		stdPkgs, err := packages.Load(cfg, "std")
+		if err != nil {
+			log.Fatalln("Error discovering packages:", err)
+		}
+		if packages.PrintErrors(pkgs) > 0 {
+			os.Exit(1)
+		}
+
+		stdSet := make(map[string]struct{})
+		pre := func(pkg *packages.Package) bool {
+			stdSet[pkg.PkgPath] = struct{}{}
+			return true
+		}
+		packages.Visit(stdPkgs, pre, nil)
+		for pkg := range stdSet {
+			delete(depSet, pkg)
+		}
 	}
+	for _, pkg := range pkgs {
+		delete(depSet, pkg.PkgPath)
+	}
+	var deps []string
+	for dep := range depSet {
+		deps = append(deps, dep)
+	}
+	sort.Strings(deps)
 	for _, dep := range deps {
 		fmt.Println(dep)
 	}
